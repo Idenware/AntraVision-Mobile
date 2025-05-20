@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pillow
+keras
+tensorflow
+flask
