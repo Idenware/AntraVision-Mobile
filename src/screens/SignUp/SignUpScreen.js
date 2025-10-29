@@ -19,7 +19,7 @@ import User from "../../../assets/icons/profile/user.svg";
 import Phone from "../../../assets/icons/profile/phone.svg";
 import Location from "../../../assets/icons/profile/location.svg";
 
-const SignUpScreen = ({ navigation }) => {
+export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
@@ -254,5 +254,3 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
 });
-
-export default SignUpScreen;
