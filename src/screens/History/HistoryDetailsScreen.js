@@ -15,7 +15,8 @@ import CardHistoryChartSeed from "../../components/HistoryDetails/CardHistoryCha
 
 const { width } = Dimensions.get("window");
 
-const HistoryDetailsScreen = ({ navigation }) => {
+const HistoryDetailsScreen = ({ navigation, route }) => {
+  const { farm } = route.params || {};
   const today = new Date();
   const formattedDate = today
     .toLocaleDateString("pt-BR", {
@@ -40,7 +41,7 @@ const HistoryDetailsScreen = ({ navigation }) => {
         <View style={styles.statisticContent}>
           <View style={styles.statisticTextContent}>
             <View style={styles.statisticMainText}>
-              <Text style={styles.span}>Sítio A</Text>
+              <Text style={styles.span}>{farm?.name || "Fazenda"}</Text>
               <Text style={styles.title}>Estatísticas de ocorrência</Text>
             </View>
             <Text style={styles.subtitle}>{formattedDate}</Text>
@@ -50,11 +51,11 @@ const HistoryDetailsScreen = ({ navigation }) => {
       <View style={styles.overviewStatisticsContent}>
         <View style={styles.overviewStatisticsChart}>
           <CardChartHistoryDetails />
-          <CardOverviewAnalysis />
+          <CardOverviewAnalysis farmId={farm?._id} />
         </View>
         <View style={styles.overviewStatistics}>
-          <CardHistoryProgressBar />
-          <CardHistoryChartSeed />
+          <CardHistoryProgressBar farmId={farm?._id} />
+          <CardHistoryChartSeed farmId={farm?._id} />
         </View>
       </View>
     </ScrollView>

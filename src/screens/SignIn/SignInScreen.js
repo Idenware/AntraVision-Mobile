@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { signIn } from "../../services/Api";
 
 import LeftArrow from "../../../assets/icons/arrow/left-arrow.svg";
 import User from "../../../assets/icons/profile/user.svg";
@@ -25,30 +26,20 @@ const SignInScreen = ({ navigation }) => {
 
   const handleSignIn = async () => {
     if (!username || !password) {
-      Alert.alert("Erro", "Preencha todos os campos!");
+      Alert.alert("Erro", "Por favor, preencha todos os campos!");
       return;
     }
 
     try {
-      const response = await fetch("http://192.168.3.101:3000/auth/signin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login: username, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        Alert.alert("Erro", data.error || "Erro ao autenticar");
-        return;
-      }
-
+      const data = await signIn({ login: username, password });
       await AsyncStorage.setItem("token", data.token);
       await AsyncStorage.setItem("user", JSON.stringify(data.user));
-
       navigation.navigate("Home");
     } catch (error) {
-      Alert.alert("Erro", "Erro ao conectar ao servidor.");
+      Alert.alert(
+        "Erro",
+        error.response?.data?.error || "Falha na autenticação"
+      );
     }
   };
 
@@ -67,13 +58,13 @@ const SignInScreen = ({ navigation }) => {
             <View style={styles.infoContainer}>
               <View style={styles.welcomeContainer}>
                 <Text style={styles.title}>Bem-vindo de volta!</Text>
-                <Text style={styles.subtitle}>Vamos fazer o seu login</Text>
+                <Text style={styles.subtitle}>Vamos fazer seu login</Text>
               </View>
 
               <View style={styles.formContainerWrap}>
                 <View style={styles.formContainer}>
                   <View style={styles.inputMainContainer}>
-                    <Text style={styles.label}>Nome de Usuário/Email</Text>
+                    <Text style={styles.label}>Usuário/Email</Text>
                     <View style={styles.inputContainer}>
                       <View style={styles.inputText}>
                         <User />
@@ -121,12 +112,12 @@ const SignInScreen = ({ navigation }) => {
                     </LinearGradient>
                   </TouchableOpacity>
                   <Text style={styles.signupText}>
-                    Não tem uma conta? Faça o{" "}
+                    Não tem uma conta?{" "}
                     <Text
                       style={styles.link}
                       onPress={() => navigation.navigate("SignUp")}
                     >
-                      Cadastro
+                      Cadastre-se
                     </Text>
                   </Text>
                 </View>

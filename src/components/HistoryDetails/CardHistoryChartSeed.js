@@ -47,9 +47,9 @@ const CardHistoryChartSeed = () => {
   return (
     <View style={styles.cardContainer}>
       <View style={styles.textContent}>
-        <Text style={styles.title}>Idade da Planta (meses)</Text>
+        <Text style={styles.title}>Idade da Muda (meses)</Text>
         <Text style={styles.subtitle}>
-          Índices de idade em meses de plantas contaminadas
+          Distribuição de idade das plantas infectadas.
         </Text>
       </View>
       <View style={styles.chartContainer}>
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: {
-    color: "#2F2F2F",
+    color: "#747474",
     fontSize: 16,
     fontWeight: "bold",
   },

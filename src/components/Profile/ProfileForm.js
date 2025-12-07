@@ -1,17 +1,123 @@
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
+import { getUserProfile, updateUserProfile } from "../../services/Api";
 import User from "../../../assets/icons/profile/user.svg";
 import Email from "../../../assets/icons/profile/email.svg";
 import Phone from "../../../assets/icons/profile/phone.svg";
 import Password from "../../../assets/icons/profile/password.svg";
 
-const ProfileForm = () => {
+const ProfileForm = ({ onProfileUpdate }) => {
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [token, setToken] = useState(null);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, []);
+
+  const loadUserProfile = async () => {
+    try {
+      const userJson = await AsyncStorage.getItem("user");
+      const userToken = await AsyncStorage.getItem("token");
+
+      if (userJson && userToken) {
+        const user = JSON.parse(userJson);
+        setUserId(user.id);
+        setToken(userToken);
+
+        const profileData = await getUserProfile(user.id, userToken);
+
+        setUsername(profileData.username || "");
+        setEmail(profileData.email || "");
+        setPhone(profileData.phone || "");
+
+        const addressValue =
+          typeof profileData.address === "string"
+            ? profileData.address
+            : profileData.address?.text || "";
+        setAddress(addressValue);
+      }
+    } catch (error) {
+      console.error("Erro ao carregar perfil:", error);
+      Alert.alert("Erro", "Não foi possível carregar os dados do perfil");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+
+      const updateData = {
+        username,
+        email,
+        phone,
+        address: {
+          text: address,
+          lat: 0.0,
+          lng: 0.0,
+        },
+      };
+
+      if (password && password.trim() !== "") {
+        updateData.password = password;
+      }
+
+      const updatedProfile = await updateUserProfile(userId, updateData, token);
+
+      const updatedUser = {
+        id: userId,
+        username: updatedProfile.username || username,
+        email: updatedProfile.email || email,
+        phone: updatedProfile.phone || phone,
+        address: updatedProfile.address || {
+          text: address,
+          lat: 0.0,
+          lng: 0.0,
+        },
+        profileImage: updatedProfile.profileImage || "",
+      };
+      await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
+
+      if (onProfileUpdate) {
+        onProfileUpdate();
+      }
+
+      Alert.alert("Sucesso", "Perfil atualizado com sucesso!");
+      setPassword("••••••••");
+    } catch (error) {
+      console.error("Erro ao atualizar perfil:", error);
+      Alert.alert("Erro", "Não foi possível atualizar o perfil");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.form}>
       <View style={styles.inputMainContainer}>
@@ -20,11 +126,11 @@ const ProfileForm = () => {
           <User />
           <TextInput
             style={styles.input}
-            //   value={username}
-            //   onChangeText={setUsername}
-            value="Sergio Pereira"
+            value={username}
+            onChangeText={setUsername}
             keyboardType="default"
             placeholderTextColor="#A4A8B1"
+            placeholder="Digite seu nome de usuário"
           />
         </View>
       </View>
@@ -35,11 +141,11 @@ const ProfileForm = () => {
           <Email />
           <TextInput
             style={styles.input}
-            //   value={username}
-            //   onChangeText={setUsername}
-            value="sergiopereira@gmail.com"
-            keyboardType="default"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
             placeholderTextColor="#A4A8B1"
+            placeholder="Digite seu email"
           />
         </View>
       </View>
@@ -50,32 +156,51 @@ const ProfileForm = () => {
           <Phone />
           <TextInput
             style={styles.input}
-            //   value={username}
-            //   onChangeText={setUsername}
-            value="+55 (13) 99875-2591"
-            keyboardType="numeric"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
             placeholderTextColor="#A4A8B1"
+            placeholder="Digite seu celular"
           />
         </View>
       </View>
 
       <View style={styles.inputMainContainer}>
-        <Text style={styles.label}>SENHA</Text>
+        <Text style={styles.label}>ENDEREÇO</Text>
         <View style={styles.inputContainer}>
-          <Password />
+          <User />
           <TextInput
             style={styles.input}
-            //   value={username}
-            //   onChangeText={setUsername}
-            value="+55 (13) 99875-2591"
+            value={address}
+            onChangeText={setAddress}
             keyboardType="default"
-            secureTextEntry
             placeholderTextColor="#A4A8B1"
+            placeholder="Digite seu endereço"
           />
         </View>
       </View>
 
-      <TouchableOpacity style={styles.button}>
+      <View style={styles.inputMainContainer}>
+        <Text style={styles.label}>SENHA (deixe vazio para não alterar)</Text>
+        <View style={styles.inputContainer}>
+          <Password />
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            keyboardType="default"
+            secureTextEntry
+            placeholderTextColor="#A4A8B1"
+            placeholder="Digite uma nova senha"
+          />
+        </View>
+      </View>
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleSave}
+        disabled={saving}
+      >
         <LinearGradient
           colors={["#B8DF78", "#5ED6A5"]}
           start={{ x: 1, y: 0 }}
@@ -83,7 +208,11 @@ const ProfileForm = () => {
           style={styles.gradientBackground}
         >
           <View style={styles.buttonTextContainer}>
-            <Text style={styles.buttonText}>Salvar Alterações</Text>
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Salvar Alterações</Text>
+            )}
           </View>
         </LinearGradient>
       </TouchableOpacity>

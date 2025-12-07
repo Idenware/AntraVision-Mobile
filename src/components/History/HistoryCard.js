@@ -1,36 +1,104 @@
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Dimensions,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { BarChart } from "react-native-gifted-charts";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSectorStatsByFarm } from "../../services/Api";
 
 const { width } = Dimensions.get("window");
 
 const getBarColor = (value) => {
-  if (value >= 35) return "#FF6B6B";    
-  if (value >= 20) return "#FFD868";    
-  return "#BCEC9F";                     
+  if (value >= 35) return "#FF6B6B";
+  if (value >= 20) return "#FFD868";
+  return "#BCEC9F";
 };
 
-const HistoryCard = ({ onPress }) => {
-  const rawData = [5, 21, 15, 30, 40, 10]; 
+const HistoryCard = ({ farm, onPress }) => {
+  const [sectorData, setSectorData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const data = rawData.map((value, index) => ({
-    value,
-    label: String(index + 1).padStart(2, "0"),
-    frontColor: getBarColor(value),
-    topLabelComponent: () => <Text style={styles.labelText}>{value}</Text>,
+  useEffect(() => {
+    loadSectorStats();
+  }, [farm]);
+
+  const loadSectorStats = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem("token");
+      const stats = await getSectorStatsByFarm(farm._id, token);
+
+      const sectorMap = {};
+      stats.forEach((stat) => {
+        const intensity =
+          (stat.attention || 0) + (stat.severe || 0) + (stat.critical || 0);
+        if (!sectorMap[stat.sectorName]) {
+          sectorMap[stat.sectorName] = intensity;
+        } else {
+          sectorMap[stat.sectorName] += intensity;
+        }
+      });
+
+      setSectorData(
+        Object.entries(sectorMap).map(([name, value]) => ({
+          sectorName: name,
+          value,
+        }))
+      );
+    } catch (error) {
+      console.error("Erro ao carregar estatísticas de setor:", error);
+      setSectorData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const data = sectorData.map((sector, index) => ({
+    value: sector.value,
+    label: sector.sectorName,
+    frontColor: getBarColor(sector.value),
+    topLabelComponent: () => (
+      <Text style={styles.labelText}>{sector.value}</Text>
+    ),
   }));
 
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#69C098" />
+        <Text style={styles.loadingText}>Carregando estatísticas...</Text>
+      </View>
+    );
+  }
+
+  if (!sectorData.length) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.textContent}>
+          <View style={styles.historyTextContent}>
+            <Text style={styles.title}>Intensidade da doença por Setor</Text>
+            <Text style={styles.subtitle}>{farm.name}</Text>
+          </View>
+        </View>
+        <View style={{ height: 1, backgroundColor: "#ccc" }} />
+        <Text style={styles.noDataText}>
+          Nenhum dado disponível para esta fazenda
+        </Text>
+      </View>
+    );
+  }
+
   return (
-    <TouchableOpacity onPress={onPress} style={styles.container}>
+    <TouchableOpacity onPress={() => onPress(farm)} style={styles.container}>
       <View style={styles.textContent}>
         <View style={styles.historyTextContent}>
           <Text style={styles.title}>Intensidade da doença por Setor</Text>
-          <Text style={styles.subtitle}>Propriedade 1</Text>
+          <Text style={styles.subtitle}>{farm.name}</Text>
         </View>
       </View>
       <View style={{ height: 1, backgroundColor: "#ccc" }} />
@@ -85,6 +153,18 @@ const styles = StyleSheet.create({
     color: "#5C5C5C",
     marginBottom: 4,
     textAlign: "center",
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "#888",
+    textAlign: "center",
+    marginTop: 10,
+  },
+  noDataText: {
+    fontSize: 14,
+    color: "#888",
+    textAlign: "center",
+    paddingVertical: 20,
   },
 });
 

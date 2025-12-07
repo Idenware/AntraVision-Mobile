@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-  baseURL: 'http://3.141.23.81:5000',
+  baseURL: 'http://3.14.9.128:3000',
 });
 
 
@@ -14,7 +14,6 @@ export const storeToken = async (token) => {
   }
 };
 
-
 export const getToken = async () => {
   try {
     const token = await AsyncStorage.getItem('access_token');
@@ -25,7 +24,6 @@ export const getToken = async () => {
   }
 };
 
-
 export const removeToken = async () => {
   try {
     await AsyncStorage.removeItem('access_token');
@@ -33,7 +31,6 @@ export const removeToken = async () => {
     console.error('Erro ao remover token', error);
   }
 };
-
 
 axiosInstance.interceptors.request.use(
   async (config) => {
@@ -48,7 +45,6 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-
 export const fetchData = async (endpoint) => {
   try {
     const response = await axiosInstance.get(endpoint);
@@ -58,6 +54,5 @@ export const fetchData = async (endpoint) => {
     throw new Error('Erro ao buscar dados.');
   }
 };
-
 
 export default axiosInstance;

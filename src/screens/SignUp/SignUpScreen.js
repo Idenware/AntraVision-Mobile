@@ -26,7 +26,7 @@ const SignUpScreen = ({ navigation }) => {
 
   const handleNext = () => {
     if (!username || !phone || !location) {
-      Alert.alert("Erro", "Preencha todos os campos!");
+      Alert.alert("Erro", "Por favor, preencha todos os campos!");
       return;
     }
 
@@ -52,15 +52,13 @@ const SignUpScreen = ({ navigation }) => {
             <View style={styles.infoContainer}>
               <View style={styles.welcomeContainer}>
                 <Text style={styles.title}>Olá!</Text>
-                <Text style={styles.subtitle}>
-                  Vamos criar uma conta para você
-                </Text>
+                <Text style={styles.subtitle}>Vamos criar sua conta</Text>
               </View>
 
               <View style={styles.formContainerWrap}>
                 <View style={styles.formContainer}>
                   <View style={styles.inputMainContainer}>
-                    <Text style={styles.label}>Nome de Usuário</Text>
+                    <Text style={styles.label}>Usuário</Text>
                     <View style={styles.inputContainer}>
                       <View style={styles.inputText}>
                         <User />
@@ -76,7 +74,7 @@ const SignUpScreen = ({ navigation }) => {
                   </View>
 
                   <View style={styles.inputMainContainer}>
-                    <Text style={styles.label}>Número de Celular</Text>
+                    <Text style={styles.label}>Telefone</Text>
                     <View style={styles.inputContainer}>
                       <View style={styles.inputText}>
                         <Phone />
@@ -123,12 +121,12 @@ const SignUpScreen = ({ navigation }) => {
                   </TouchableOpacity>
 
                   <Text style={styles.signupText}>
-                    Já tem uma conta? Faça o{" "}
+                    Já tem uma conta?{" "}
                     <Text
                       style={styles.link}
                       onPress={() => navigation.navigate("SignIn")}
                     >
-                      Login
+                      Entrar
                     </Text>
                   </Text>
                 </View>

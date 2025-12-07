@@ -1,105 +1,227 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   Dimensions,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LineChart } from "react-native-gifted-charts";
 import { LinearGradient } from "expo-linear-gradient";
+import { getStatsByDate } from "../../services/Api";
 
-const timeRanges = ["Últimas horas", "Últimas semanas", "Últimos meses"];
-const screenWidth = Dimensions.get("window").width;
-const padding = 27;
+const TIME_RANGES = ["Últimas Horas", "Últimas Semanas", "Últimos Meses"];
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const PADDING = 27;
+const PERIODS_COUNT = 5;
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
-const CHART_DATA = {
-  "Últimas horas": [70, 65, 40, 55, 60],
-  "Últimas semanas": [50, 60, 45, 70, 55],
-  "Últimos meses": [30, 40, 60, 50, 70],
+const getTimeRange = (range, index, now) => {
+  const ranges = {
+    "Últimas Horas": () => {
+      const start = new Date(now);
+      start.setHours(now.getHours() - index, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(start.getHours() + 1);
+      return { start, end };
+    },
+    "Últimas Semanas": () => {
+      const end = new Date(now);
+      end.setDate(now.getDate() - index * 7);
+      end.setHours(23, 59, 59, 999);
+      const start = new Date(end);
+      start.setDate(end.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      return { start, end };
+    },
+    "Últimos Meses": () => {
+      const targetDate = new Date(now);
+      targetDate.setMonth(now.getMonth() - index);
+      const start = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth(),
+        1
+      );
+      const end = new Date(
+        targetDate.getFullYear(),
+        targetDate.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999
+      );
+      return { start, end };
+    },
+  };
+  return ranges[range]();
 };
 
-const generateLabels = (range) => {
-  const now = new Date();
-  switch (range) {
-    case "Últimas horas": {
-      // Últimas 5 horas (de 4 horas atrás até agora)
-      const labels = [];
-      for (let i = 4; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 60 * 60 * 1000);
-        labels.push(`${d.getHours().toString().padStart(2, "0")}:00`);
-      }
-      return labels;
-    }
-    case "Últimas semanas": {
-      // Últimas 5 semanas, rotuladas "Sem 1" a "Sem 5"
-      // Sem 1 = semana mais antiga, Sem 5 = mais recente
-      return ["Sem 1", "Sem 2", "Sem 3", "Sem 4", "Sem 5"];
-    }
-    case "Últimos meses": {
-      // Últimos 5 meses, no formato MMM (ex: Jan, Fev, Mar...)
-      const labels = [];
-      const monthNames = [
-        "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-        "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-      ];
-      const currentMonth = now.getMonth(); // 0-11
-      for (let i = 4; i >= 0; i--) {
-        const monthIndex = (currentMonth - i + 12) % 12;
-        labels.push(monthNames[monthIndex]);
-      }
-      return labels;
-    }
-    default:
-      return [];
-  }
+const generateLabel = (range, index, now) => {
+  const labels = {
+    "Últimas Horas": () => {
+      const d = new Date(now);
+      d.setHours(now.getHours() - index);
+      return `${d.getHours().toString().padStart(2, "0")}:00`;
+    },
+    "Últimas Semanas": () => {
+      const weekEnd = new Date(now);
+      weekEnd.setDate(now.getDate() - index * 7);
+      const weekStart = new Date(weekEnd);
+      weekStart.setDate(weekEnd.getDate() - 6);
+      return `${weekStart.getDate()}/${weekStart.getMonth() + 1}`;
+    },
+    "Últimos Meses": () => {
+      const targetDate = new Date(now);
+      targetDate.setMonth(now.getMonth() - index);
+      return MONTH_NAMES[targetDate.getMonth()];
+    },
+  };
+  return labels[range]();
 };
 
 const ChartTimePeriod = () => {
-  const [selectedRange, setSelectedRange] = useState("Últimas horas");
+  const [selectedRange, setSelectedRange] = useState("Últimas Horas");
+  const [occurrencesData, setOccurrencesData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [farmId, setFarmId] = useState(null);
 
-  const values = CHART_DATA[selectedRange];
+  // Carrega dados do usuário (farmId)
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const userJson = await AsyncStorage.getItem("user");
+        if (userJson) {
+          const user = JSON.parse(userJson);
+          setFarmId(user.selectedFarm);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar dados do usuário:", error);
+      }
+    };
+    loadUserData();
+  }, []);
 
-  const labels = useMemo(() => generateLabels(selectedRange), [selectedRange]);
+  useEffect(() => {
+    if (!farmId) {
+      setLoading(false);
+      return;
+    }
 
-  const chartData = values.map((value, i) => ({
-    value,
-    label: labels[i],
-    hideDataPoint: true,
-  }));
+    const fetchOccurrences = async () => {
+      try {
+        setLoading(true);
+        const token = await AsyncStorage.getItem("token");
+        const data = await getStatsByDate(farmId, token);
+        setOccurrencesData(data || []);
+      } catch (error) {
+        console.error("Erro ao buscar dados de ocorrências:", error);
+        setOccurrencesData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const spacing =
-    chartData.length > 1
-      ? (screenWidth - padding * 2) / (chartData.length - 1)
-      : 50;
+    fetchOccurrences();
+  }, [farmId]);
+
+  const values = useMemo(() => {
+    if (!occurrencesData.length) return Array(PERIODS_COUNT).fill(0);
+
+    const now = new Date();
+    return Array.from({ length: PERIODS_COUNT }, (_, i) => {
+      const index = PERIODS_COUNT - 1 - i;
+      const { start, end } = getTimeRange(selectedRange, index, now);
+
+      return occurrencesData
+        .filter((item) => {
+          const itemDate = new Date(item._id);
+          return itemDate >= start && itemDate <= end;
+        })
+        .reduce((sum, item) => sum + (item.count || 0), 0);
+    });
+  }, [occurrencesData, selectedRange]);
+
+  const labels = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: PERIODS_COUNT }, (_, i) => {
+      const index = PERIODS_COUNT - 1 - i;
+      return generateLabel(selectedRange, index, now);
+    });
+  }, [selectedRange]);
+
+  const chartData = useMemo(
+    () =>
+      values.map((value, i) => ({
+        value,
+        label: labels[i],
+        hideDataPoint: true,
+      })),
+    [values, labels]
+  );
+
+  const spacing = useMemo(
+    () =>
+      chartData.length > 1
+        ? (SCREEN_WIDTH - PADDING * 2) / (chartData.length - 1)
+        : 50,
+    [chartData.length]
+  );
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#69C098" />
+        <Text style={styles.loadingText}>Carregando dados...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.rangeSelector}>
-        {timeRanges.map((range) => {
+        {TIME_RANGES.map((range) => {
           const isSelected = selectedRange === range;
+          const ButtonWrapper = isSelected ? LinearGradient : View;
+          const buttonProps = isSelected
+            ? {
+                start: { x: 1, y: 0 },
+                end: { x: 1, y: 1 },
+                colors: ["#B8DF78", "#69C098"],
+                style: styles.gradientButton,
+              }
+            : { style: styles.rangeButton };
 
           return (
             <TouchableOpacity
               key={range}
               onPress={() => setSelectedRange(range)}
             >
-              {isSelected ? (
-                <LinearGradient
-                  start={{ x: 1, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  colors={["#B8DF78", "#69C098"]}
-                  style={styles.gradientButton}
+              <ButtonWrapper {...buttonProps}>
+                <Text
+                  style={[
+                    styles.rangeText,
+                    isSelected && styles.activeRangeText,
+                  ]}
                 >
-                  <Text style={[styles.rangeText, styles.activeRangeText]}>
-                    {range}
-                  </Text>
-                </LinearGradient>
-              ) : (
-                <View style={styles.rangeButton}>
-                  <Text style={styles.rangeText}>{range}</Text>
-                </View>
-              )}
+                  {range}
+                </Text>
+              </ButtonWrapper>
             </TouchableOpacity>
           );
         })}
@@ -109,7 +231,7 @@ const ChartTimePeriod = () => {
         key={selectedRange}
         data={chartData}
         areaChart
-        width={screenWidth}
+        width={SCREEN_WIDTH}
         height={200}
         thickness={2}
         color="#6bdc91"
@@ -140,6 +262,16 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: "#fff",
     paddingVertical: 10,
+  },
+  loadingContainer: {
+    minHeight: 250,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "#888",
   },
   rangeSelector: {
     flexDirection: "row",

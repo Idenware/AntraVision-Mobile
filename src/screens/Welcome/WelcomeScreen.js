@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Dimensions,
 } from "react-native";
-import { LinearGradient } from 'expo-linear-gradient';
+import { LinearGradient } from "expo-linear-gradient";
 import Logo from "../../../assets/logo/antravision_logo.svg";
 import RightArrow from "../../../assets/icons/arrow/right-arrow.svg";
 
@@ -43,22 +43,22 @@ const WelcomeScreen = ({ navigation }) => {
 
         <View style={styles.contentContainer}>
           <View style={styles.textContainer}>
-            <Text style={styles.title}>Bem-Vindo ao AntraVision!</Text>
+            <Text style={styles.title}>Bem-vindo ao AntraVision!</Text>
             <Text style={styles.subtitle}>
-              Acompanhe a saúde da sua pupunheira por aqui!
+              Acompanhe a saúde das suas mudas de pupunha aqui!
             </Text>
           </View>
 
           <TouchableOpacity
             style={styles.button}
             activeOpacity={0.7}
-            onPress={() => navigation.navigate('SignIn')}
+            onPress={() => navigation.navigate("SignIn")}
             accessibilityRole="button"
             accessibilityLabel="Continuar para AntraVision"
           >
             <View style={styles.buttonContent}>
               <View style={styles.iconWrapper}></View>
-              <Text style={styles.buttonText}>Vamos Lá!</Text>
+              <Text style={styles.buttonText}>Vamos lá!</Text>
               <View style={styles.iconWrapper}>
                 <RightArrow />
               </View>
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     height: height * 0.2,
   },
   contentContainer: {
-    width: '100%',
+    width: "100%",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 45,

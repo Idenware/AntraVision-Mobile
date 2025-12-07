@@ -53,17 +53,17 @@ const CardChartHistoryDetails = () => {
         xAxisColor="transparent"
         xAxisLabelTexts={[
           "Jan",
-          "Fev",
+          "Feb",
           "Mar",
-          "Abr",
-          "Mai",
+          "Apr",
+          "May",
           "Jun",
           "Jul",
-          "Ago",
-          "Set",
-          "Out",
+          "Aug",
+          "Sep",
+          "Oct",
           "Nov",
-          "Dez",
+          "Dec",
         ]}
         xAxisLabelTextStyle={styles.xAxisLabel}
         isAnimated

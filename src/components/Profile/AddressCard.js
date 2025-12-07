@@ -1,29 +1,74 @@
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getFarmById, selectUserFarm } from "../../services/Api";
 import Farm from "../../../assets/icons/thing/farm.svg";
 
-const AddressCard = () => {
+const AddressCard = ({ farm, isSelected, onSelect }) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleSelectFarm = async () => {
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem("token");
+      const userJson = await AsyncStorage.getItem("user");
+
+      if (token && userJson) {
+        await selectUserFarm(farm._id, token);
+
+        const user = JSON.parse(userJson);
+        const updatedUser = { ...user, selectedFarm: farm._id };
+        await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
+
+        if (onSelect) {
+          onSelect(farm._id);
+        }
+
+        Alert.alert("Sucesso", `Fazenda "${farm.name}" selecionada!`);
+      }
+    } catch (error) {
+      console.error("Erro ao selecionar fazenda:", error);
+      Alert.alert("Erro", "Não foi possível selecionar a fazenda");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <TouchableOpacity style={styles.farmContainer}>
-      <Text style={styles.addressText}>Endereço</Text>
+    <TouchableOpacity
+      style={[styles.farmContainer, isSelected && styles.selectedFarmContainer]}
+      onPress={handleSelectFarm}
+      disabled={loading}
+    >
+      <Text style={styles.addressText}>
+        {isSelected ? "Fazenda Selecionada" : "Endereço"}
+      </Text>
       <View style={styles.farmContent}>
         <Farm />
-        <Text style={styles.farmText}>Sítio A</Text>
+        <Text style={[styles.farmText, isSelected && styles.selectedFarmText]}>
+          {farm.name}
+        </Text>
       </View>
       <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          //   value={username}
-          //   onChangeText={setUsername}
-          value="Av. Rua Dr. Sizenando de Carvalho, 105"
-          keyboardType="default"
-          placeholderTextColor="#A4A8B1"
-        />
+        {loading ? (
+          <ActivityIndicator size="small" color="#28C182" />
+        ) : (
+          <TextInput
+            style={styles.input}
+            value={farm.address}
+            keyboardType="default"
+            placeholderTextColor="#A4A8B1"
+            editable={false}
+          />
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -60,6 +105,13 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: "#28C182",
     textTransform: "uppercase",
+  },
+  selectedFarmContainer: {
+    borderWidth: 2,
+    borderColor: "#28C182",
+  },
+  selectedFarmText: {
+    fontWeight: "bold",
   },
   inputMainContainer: {
     backgroundColor: "#fff",

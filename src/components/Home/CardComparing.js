@@ -1,11 +1,141 @@
-import React from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Dimensions,
+  ActivityIndicator,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getFarms, getOccurrenceHistory } from "../../services/Api";
 import Sun from "../../../assets/icons/thing/sun.svg";
 
 const { width } = Dimensions.get("window");
 
 const CardComparing = () => {
+  const [comparison, setComparison] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadComparison();
+  }, []);
+
+  const loadComparison = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const userJson = await AsyncStorage.getItem("user");
+
+      if (token && userJson) {
+        const user = JSON.parse(userJson);
+        const selectedFarmId = user.selectedFarm;
+
+        if (!selectedFarmId) {
+          setComparison({
+            message: "Selecione uma fazenda para ver comparações",
+          });
+          setLoading(false);
+          return;
+        }
+
+        const farms = await getFarms(token);
+
+        if (farms.length < 2) {
+          setComparison({
+            message: "Adicione mais fazendas para comparar ocorrências",
+          });
+          setLoading(false);
+          return;
+        }
+
+        const farmsWithOccurrences = await Promise.all(
+          farms.map(async (farm) => {
+            try {
+              const occurrences = await getOccurrenceHistory(farm._id, token);
+              const totalInfected = occurrences.reduce(
+                (sum, occ) => sum + (occ.infectedCounts || 0),
+                0
+              );
+              return {
+                id: farm._id,
+                name: farm.name,
+                totalInfected,
+                occurrenceCount: occurrences.length,
+              };
+            } catch (error) {
+              return {
+                id: farm._id,
+                name: farm.name,
+                totalInfected: 0,
+                occurrenceCount: 0,
+              };
+            }
+          })
+        );
+
+        const sorted = farmsWithOccurrences.sort(
+          (a, b) => b.totalInfected - a.totalInfected
+        );
+
+        const selectedFarm = sorted.find((f) => f.id === selectedFarmId);
+        const otherFarms = sorted.filter((f) => f.id !== selectedFarmId);
+
+        if (!selectedFarm || otherFarms.length === 0) {
+          setComparison({
+            message: "Dados insuficientes para comparação",
+          });
+          setLoading(false);
+          return;
+        }
+
+        if (sorted[0].totalInfected === 0) {
+          setComparison({
+            message: "Nenhuma ocorrência registrada nas fazendas",
+          });
+        } else {
+          const comparisonFarm = otherFarms.length > 0 ? otherFarms[0] : null;
+
+          if (!comparisonFarm) {
+            setComparison({
+              message: `A fazenda "${selectedFarm.name}" possui ${selectedFarm.totalInfected} plantas infectadas`,
+            });
+          } else if (
+            selectedFarm.totalInfected > comparisonFarm.totalInfected
+          ) {
+            setComparison({
+              message: `O índice de ocorrência da propriedade "${selectedFarm.name}" é maior que "${comparisonFarm.name}"`,
+            });
+          } else if (
+            selectedFarm.totalInfected < comparisonFarm.totalInfected
+          ) {
+            setComparison({
+              message: `O índice de ocorrência da propriedade "${comparisonFarm.name}" é maior que "${selectedFarm.name}"`,
+            });
+          } else {
+            setComparison({
+              message: `As propriedades "${selectedFarm.name}" e "${comparisonFarm.name}" têm índices similares`,
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao comparar fazendas:", error);
+      setComparison({
+        message: "Erro ao carregar comparação",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.cardContainer}>
+        <ActivityIndicator size="small" color="#28C182" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.cardContainer}>
       <View style={styles.mainContent}>
@@ -20,8 +150,7 @@ const CardComparing = () => {
         <View style={styles.textContent}>
           <Text style={styles.title}>Comparação entre Propriedades</Text>
           <Text style={styles.subtitle}>
-            O Sítio B apresenta índices de ocorrência da doença maiores que o
-            Sítio A.
+            {comparison?.message || "Carregando..."}
           </Text>
         </View>
       </View>

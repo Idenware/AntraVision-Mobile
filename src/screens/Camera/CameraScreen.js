@@ -117,20 +117,60 @@ const CameraScreen = ({ navigation }) => {
   };
 
   const sendPhotoToAPI = async (base64Image) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     try {
-      const response = await fetch("http://3.135.213.245:5000/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64Image }),
+      // Verifique se há conexão com internet primeiro
+      const netInfo = await fetch("https://www.google.com", {
+        method: "HEAD",
+      }).catch(() => {
+        throw new Error("SEM_CONEXAO");
       });
+
+      const API_URL = "http://3.148.195.140:5000/predict";
+
+      console.log("Enviando imagem para API:", API_URL);
+
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          image: base64Image,
+          timestamp: new Date().toISOString(),
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // Log detalhado da resposta
+      console.log("Status da resposta:", response.status);
+      console.log(
+        "Headers da resposta:",
+        Object.fromEntries(response.headers.entries())
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Erro da API:", errorText);
+        throw new Error(
+          `HTTP ${response.status}: ${errorText.substring(0, 100)}`
+        );
+      }
 
       const contentType = response.headers.get("content-type");
       let data;
 
       if (contentType && contentType.includes("application/json")) {
         data = await response.json();
+        console.log("Resposta JSON:", data);
       } else {
         const htmlText = await response.text();
+        console.log("Resposta HTML:", htmlText.substring(0, 200));
         data = htmlToJson(htmlText);
       }
 
@@ -138,15 +178,39 @@ const CameraScreen = ({ navigation }) => {
         const resultadoFinal = data.resultado || data.content;
         setResultado(resultadoFinal);
         openModal();
+      } else if (data.error) {
+        Alert.alert("Erro da API", data.error);
       } else {
-        Alert.alert("Erro", data.error || "Resposta inválida da API");
+        Alert.alert("Atenção", "Resposta inesperada da API");
       }
     } catch (error) {
-      console.error("Error sending photo:", error);
-      Alert.alert(
-        "Erro de Conexão",
-        "Não foi possível conectar à API. Verifique sua conexão."
-      );
+      clearTimeout(timeoutId);
+      console.error("Erro completo:", error);
+
+      let errorMessage = "Não foi possível conectar à API.";
+      let errorTitle = "Erro de Conexão";
+
+      if (error.message === "SEM_CONEXAO") {
+        errorTitle = "Sem Conexão";
+        errorMessage =
+          "Verifique sua conexão com a internet e tente novamente.";
+      } else if (error.name === "AbortError") {
+        errorMessage = "A requisição demorou muito tempo. Tente novamente.";
+      } else if (error.message.includes("Network request failed")) {
+        errorMessage =
+          "Não foi possível conectar ao servidor. Verifique:\n1. Sua conexão com a internet\n2. Se o servidor está online\n3. Se a URL está correta";
+      } else if (error.message.includes("HTTP error")) {
+        errorTitle = "Erro do Servidor";
+        errorMessage = error.message;
+      }
+
+      Alert.alert(errorTitle, errorMessage, [
+        { text: "OK", style: "cancel" },
+        {
+          text: "Tentar Novamente",
+          onPress: () => sendPhotoToAPI(base64Image),
+        },
+      ]);
     } finally {
       setLoading(false);
     }

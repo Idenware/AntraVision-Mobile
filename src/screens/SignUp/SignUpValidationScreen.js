@@ -1,4 +1,3 @@
-// SignUpValidationScreen.js
 import React, { useState } from "react";
 import {
   View,
@@ -14,6 +13,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { register } from "../../services/Api";
 
 import LeftArrow from "../../../assets/icons/arrow/left-arrow.svg";
 import Email from "../../../assets/icons/profile/email.svg";
@@ -28,7 +28,7 @@ const SignUpValidationScreen = ({ navigation, route }) => {
 
   const handleSignUp = async () => {
     if (!email || !password || !passwordConfirm) {
-      Alert.alert("Erro", "Preencha todos os campos!");
+      Alert.alert("Erro", "Por favor, preencha todos os campos!");
       return;
     }
 
@@ -37,44 +37,40 @@ const SignUpValidationScreen = ({ navigation, route }) => {
       return;
     }
 
+    if (!location || location.length < 10) {
+      Alert.alert("Erro", "O endereço deve ter pelo menos 10 caracteres!");
+      return;
+    }
+
     try {
-      const response = await fetch("http://192.168.3.101:3000/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          email,
-          phone,
-          password,
-          confirmPassword: passwordConfirm,
-          address: {
-            text: location,
-            lat: 0,
-            lng: 0,
-          },
-        }),
+      const data = await register({
+        username,
+        email,
+        phone,
+        password,
+        confirmPassword: passwordConfirm,
+        address: {
+          text: location,
+          lat: 0.0,
+          lng: 0.0,
+        },
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        Alert.alert("Erro", data.error || "Erro ao cadastrar");
-        return;
-      }
 
       await AsyncStorage.setItem("token", data.token);
       await AsyncStorage.setItem("user", JSON.stringify(data.user));
-
       navigation.navigate("Home");
     } catch (error) {
-      Alert.alert("Erro", "Erro ao conectar ao servidor.");
+      Alert.alert("Erro", error.response?.data?.error || "Falha no cadastro");
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.mainContainer}>
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <LeftArrow />
@@ -83,7 +79,7 @@ const SignUpValidationScreen = ({ navigation, route }) => {
             <View style={styles.infoContainer}>
               <View style={styles.welcomeContainer}>
                 <Text style={styles.title}>Olá!</Text>
-                <Text style={styles.subtitle}>Vamos criar uma conta para você</Text>
+                <Text style={styles.subtitle}>Vamos criar sua conta</Text>
               </View>
 
               <View style={styles.formContainerWrap}>
@@ -139,7 +135,10 @@ const SignUpValidationScreen = ({ navigation, route }) => {
                 </View>
 
                 <View style={styles.signWrap}>
-                  <TouchableOpacity style={styles.button} onPress={handleSignUp}>
+                  <TouchableOpacity
+                    style={styles.button}
+                    onPress={handleSignUp}
+                  >
                     <LinearGradient
                       colors={["#B8DF78", "#5ED6A5"]}
                       start={{ x: 1, y: 0 }}
@@ -147,15 +146,20 @@ const SignUpValidationScreen = ({ navigation, route }) => {
                       style={styles.gradientBackground}
                     >
                       <View style={styles.buttonTextContainer}>
-                        <Text style={styles.buttonText}>Cadastrar</Text>
+                        <Text style={styles.buttonText}>Register</Text>
                         <Enter />
                       </View>
                     </LinearGradient>
                   </TouchableOpacity>
 
                   <Text style={styles.signupText}>
-                    Já tem uma conta? Faça o {" "}
-                    <Text style={styles.link} onPress={() => navigation.navigate("SignIn")}>Login</Text>
+                    Already have an account?{" "}
+                    <Text
+                      style={styles.link}
+                      onPress={() => navigation.navigate("SignIn")}
+                    >
+                      Sign In
+                    </Text>
                   </Text>
                 </View>
               </View>

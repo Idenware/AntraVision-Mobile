@@ -7,7 +7,7 @@ import Drop from "../../../assets/icons/thing/drop.svg";
 const { width } = Dimensions.get("window");
 
 const CarouselCardOverview = () => {
-  const leitura = useLeituraWebSocket();
+  // const leitura = useLeituraWebSocket();
   return (
     <LinearGradient
       start={{ x: 1, y: 0 }}
@@ -24,16 +24,12 @@ const CarouselCardOverview = () => {
         </View>
 
         <View style={styles.percentContent}>
-          <Text style={styles.percent}>{leitura}%</Text>
+          <Text style={styles.percent}>00%</Text>
           <Drop style={styles.drop} />
         </View>
       </View>
 
-      {/* Paginação simulada */}
       <View style={styles.pagination}>
-        {/* <View style={styles.dotActive} />
-        <View style={styles.dot} />
-        <View style={styles.dot} /> */}
       </View>
     </LinearGradient>
   );

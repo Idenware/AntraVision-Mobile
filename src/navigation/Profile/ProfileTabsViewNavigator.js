@@ -4,11 +4,12 @@ import ProfileForm from "../../components/Profile/ProfileForm";
 import AddressForm from "../../components/Profile/AddressForm";
 import { LinearGradient } from "expo-linear-gradient";
 
-const ProfileTabsViewNavigator = () => {
+const ProfileTabsViewNavigator = ({ onProfileUpdate }) => {
   const [activeTab, setActiveTab] = useState("cadastro");
 
   const renderTabContent = () => {
-    if (activeTab === "cadastro") return <ProfileForm />;
+    if (activeTab === "cadastro")
+      return <ProfileForm onProfileUpdate={onProfileUpdate} />;
     return <AddressForm />;
   };
 

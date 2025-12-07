@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,13 @@ const { width } = Dimensions.get("window");
 
 const ProfileScreen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState("cadastro");
+  const profileCardRef = useRef(null);
+
+  const handleProfileUpdate = () => {
+    if (profileCardRef.current?.loadUserProfile) {
+      profileCardRef.current.loadUserProfile();
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -34,11 +41,11 @@ const ProfileScreen = ({ navigation }) => {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Seu Perfil</Text>
         </View>
-        <ProfileCard />
+        <ProfileCard ref={profileCardRef} />
       </LinearGradient>
 
       <View style={{ flex: 1 }}>
-        <ProfileTabsViewNavigator />
+        <ProfileTabsViewNavigator onProfileUpdate={handleProfileUpdate} />
       </View>
     </ScrollView>
   );
