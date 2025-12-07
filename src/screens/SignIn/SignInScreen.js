@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -19,26 +19,36 @@ import User from "../../../assets/icons/profile/user.svg";
 import Password from "../../../assets/icons/profile/password.svg";
 import Enter from "../../../assets/icons/profile/enter.svg";
 
-export default function SignInScreen({ navigation }) {
-  const { saveToken } = useContext(AuthContext);
+const SignInScreen = ({ navigation }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const handleSignIn = async () => {
-    try {
-      const response = await login(email, password);
+    if (!username || !password) {
+      Alert.alert("Erro", "Preencha todos os campos!");
+      return;
+    }
 
-      if (response?.data?.access_token) {
-        const token = response.data.access_token;
-        saveToken(token);
-        Alert.alert("Sucesso", "Login realizado com sucesso!");
-        navigation.navigate("HomeScreen");
-      } else {
-        throw new Error("Token não recebido");
+    try {
+      const response = await fetch("http://192.168.3.101:3000/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: username, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        Alert.alert("Erro", data.error || "Erro ao autenticar");
+        return;
       }
+
+      await AsyncStorage.setItem("token", data.token);
+      await AsyncStorage.setItem("user", JSON.stringify(data.user));
+
+      navigation.navigate("Home");
     } catch (error) {
-      Alert.alert("Erro", "Falha na autenticação ou erro de conexão.");
-      console.error("Erro ao fazer login:", error.message);
+      Alert.alert("Erro", "Erro ao conectar ao servidor.");
     }
   };
 
@@ -238,3 +248,5 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
 });
+
+export default SignInScreen;

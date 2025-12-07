@@ -23,6 +23,7 @@ const generateLabels = (range) => {
   const now = new Date();
   switch (range) {
     case "Últimas horas": {
+      // Últimas 5 horas (de 4 horas atrás até agora)
       const labels = [];
       for (let i = 4; i >= 0; i--) {
         const d = new Date(now.getTime() - i * 60 * 60 * 1000);
@@ -31,9 +32,12 @@ const generateLabels = (range) => {
       return labels;
     }
     case "Últimas semanas": {
+      // Últimas 5 semanas, rotuladas "Sem 1" a "Sem 5"
+      // Sem 1 = semana mais antiga, Sem 5 = mais recente
       return ["Sem 1", "Sem 2", "Sem 3", "Sem 4", "Sem 5"];
     }
     case "Últimos meses": {
+      // Últimos 5 meses, no formato MMM (ex: Jan, Fev, Mar...)
       const labels = [];
       const monthNames = [
         "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
