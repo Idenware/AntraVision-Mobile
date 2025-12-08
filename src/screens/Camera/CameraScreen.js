@@ -11,10 +11,18 @@ import {
   Dimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  analyzeImage,
+  createOccurrence,
+  upsertSectorStats,
+} from "../../services/Api";
 import Back from "../../../assets/icons/arrow/left-arrow-white.svg";
 import { BlurView } from "expo-blur";
 
 const { height } = Dimensions.get("window");
+
+const QR_CODE_DEBOUNCE = 3000;
 
 const htmlToJson = (htmlString) => {
   try {
@@ -45,8 +53,13 @@ const CameraScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
+  const [qrCodeData, setQrCodeData] = useState("");
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [scanMode, setScanMode] = useState("photo");
 
   const slideAnim = useRef(new Animated.Value(height)).current;
+  const qrSlideAnim = useRef(new Animated.Value(height)).current;
+  const lastQrScan = useRef(0);
 
   useEffect(() => {
     if (!permission) requestPermission();
@@ -67,6 +80,42 @@ const CameraScreen = ({ navigation }) => {
       duration: 300,
       useNativeDriver: true,
     }).start(() => setModalVisible(false));
+  };
+
+  const openQrModal = () => {
+    setQrModalVisible(true);
+    Animated.timing(qrSlideAnim, {
+      toValue: 0,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeQrModal = () => {
+    Animated.timing(qrSlideAnim, {
+      toValue: height,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setQrModalVisible(false);
+      setQrCodeData("");
+    });
+  };
+
+  const handleBarcodeScanned = ({ type, data }) => {
+    const now = Date.now();
+    if (now - lastQrScan.current < QR_CODE_DEBOUNCE) {
+      return;
+    }
+
+    lastQrScan.current = now;
+    setQrCodeData("Setor 05");
+    openQrModal();
+  };
+
+  const toggleScanMode = () => {
+    setScanMode((prev) => (prev === "photo" ? "qrcode" : "photo"));
+    setQrCodeData("");
   };
 
   if (!permission) return <View />;
@@ -93,16 +142,16 @@ const CameraScreen = ({ navigation }) => {
       setLoading(true);
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.5,
+        quality: 0.2,
       });
 
       const base64Image = photo.base64;
       const sizeMB = checkBase64Size(base64Image);
 
-      if (sizeMB > 2) {
+      if (sizeMB > 1) {
         Alert.alert(
           "Imagem Muito Grande",
-          "A imagem é muito grande. Por favor, tente novamente com uma imagem menor."
+          "A imagem é muito grande. Por favor, tente novamente."
         );
         setLoading(false);
         return;
@@ -116,101 +165,104 @@ const CameraScreen = ({ navigation }) => {
     }
   };
 
-  const sendPhotoToAPI = async (base64Image) => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
+  const createOccurrenceFromAnalysis = async (prediction, farmId, token) => {
     try {
-      // Verifique se há conexão com internet primeiro
-      const netInfo = await fetch("https://www.google.com", {
-        method: "HEAD",
-      }).catch(() => {
-        throw new Error("SEM_CONEXAO");
-      });
+      const predictionLower = prediction?.toLowerCase() || "";
+      const sectorName = "Setor 05";
 
-      const API_URL = "http://3.148.195.140:5000/predict";
+      let healthyCounts = 0;
+      let attentionCounts = 0;
 
-      console.log("Enviando imagem para API:", API_URL);
+      if (
+        predictionLower.includes("saudável") ||
+        predictionLower.includes("saudavel") ||
+        predictionLower === "planta saudável"
+      ) {
+        healthyCounts = 1;
+      } else if (
+        predictionLower.includes("doente") ||
+        predictionLower === "planta doente"
+      ) {
+        attentionCounts = 1;
+      }
 
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          image: base64Image,
-          timestamp: new Date().toISOString(),
-        }),
-        signal: controller.signal,
-      });
+      const occurrenceData = {
+        farmId: farmId,
+        date: new Date().toISOString(),
+        infectedCounts: attentionCounts,
+        healthyCounts: healthyCounts,
+        totalCounts: 1,
+        plantAgeMonths: 6,
+      };
 
-      clearTimeout(timeoutId);
+      await createOccurrence(occurrenceData, token);
+      console.log("Ocorrência criada com sucesso:", occurrenceData);
 
-      // Log detalhado da resposta
-      console.log("Status da resposta:", response.status);
-      console.log(
-        "Headers da resposta:",
-        Object.fromEntries(response.headers.entries())
-      );
+      const sectorStatsData = {
+        farm: farmId,
+        sectorName: sectorName,
+        healthy: healthyCounts,
+        attention: attentionCounts,
+        severe: 0,
+        critical: 0,
+        date: new Date().toISOString(),
+      };
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro da API:", errorText);
-        throw new Error(
-          `HTTP ${response.status}: ${errorText.substring(0, 100)}`
+      await upsertSectorStats(sectorStatsData, token);
+      console.log("Estatísticas do setor atualizadas:", sectorStatsData);
+    } catch (error) {
+      console.error("Erro ao criar ocorrência/estatísticas:", error);
+    }
+  };
+
+  const sendPhotoToAPI = async (base64Image) => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const userJson = await AsyncStorage.getItem("user");
+
+      if (!token || !userJson) {
+        Alert.alert("Erro", "Usuário não autenticado");
+        setLoading(false);
+        return;
+      }
+
+      const user = JSON.parse(userJson);
+      const farmId = user.selectedFarm;
+
+      if (!farmId) {
+        Alert.alert(
+          "Atenção",
+          "Selecione uma fazenda no seu perfil antes de analisar plantas."
         );
+        setLoading(false);
+        return;
       }
 
-      const contentType = response.headers.get("content-type");
-      let data;
+      const analysisData = {
+        userId: user.id,
+        farmId: farmId,
+        location: "Camera",
+        image: base64Image,
+      };
 
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json();
-        console.log("Resposta JSON:", data);
-      } else {
-        const htmlText = await response.text();
-        console.log("Resposta HTML:", htmlText.substring(0, 200));
-        data = htmlToJson(htmlText);
-      }
+      const response = await analyzeImage(analysisData, token);
 
-      if (data.resultado || data.content) {
-        const resultadoFinal = data.resultado || data.content;
-        setResultado(resultadoFinal);
+      if (response.iaResult) {
+        const { prediction, confidence } = response.iaResult;
+        setResultado(`${prediction} (${confidence}% de confiança)`);
+
+        await createOccurrenceFromAnalysis(prediction, farmId, token);
+
         openModal();
-      } else if (data.error) {
-        Alert.alert("Erro da API", data.error);
       } else {
-        Alert.alert("Atenção", "Resposta inesperada da API");
+        Alert.alert("Erro", "Resposta inválida da API");
       }
     } catch (error) {
-      clearTimeout(timeoutId);
-      console.error("Erro completo:", error);
-
-      let errorMessage = "Não foi possível conectar à API.";
-      let errorTitle = "Erro de Conexão";
-
-      if (error.message === "SEM_CONEXAO") {
-        errorTitle = "Sem Conexão";
-        errorMessage =
-          "Verifique sua conexão com a internet e tente novamente.";
-      } else if (error.name === "AbortError") {
-        errorMessage = "A requisição demorou muito tempo. Tente novamente.";
-      } else if (error.message.includes("Network request failed")) {
-        errorMessage =
-          "Não foi possível conectar ao servidor. Verifique:\n1. Sua conexão com a internet\n2. Se o servidor está online\n3. Se a URL está correta";
-      } else if (error.message.includes("HTTP error")) {
-        errorTitle = "Erro do Servidor";
-        errorMessage = error.message;
-      }
-
-      Alert.alert(errorTitle, errorMessage, [
-        { text: "OK", style: "cancel" },
-        {
-          text: "Tentar Novamente",
-          onPress: () => sendPhotoToAPI(base64Image),
-        },
-      ]);
+      console.error("Error sending photo:", error);
+      Alert.alert(
+        "Erro de Conexão",
+        "Não foi possível conectar à API. Verifique sua conexão e certifique-se de que o backend está rodando."
+      );
     } finally {
       setLoading(false);
     }
@@ -224,6 +276,16 @@ const CameraScreen = ({ navigation }) => {
           style={styles.camera}
           facing={facing}
           flash={flash}
+          barcodeScannerSettings={
+            scanMode === "qrcode"
+              ? {
+                  barcodeTypes: ["qr"],
+                }
+              : undefined
+          }
+          onBarcodeScanned={
+            scanMode === "qrcode" ? handleBarcodeScanned : undefined
+          }
         />
       </View>
 
@@ -235,7 +297,9 @@ const CameraScreen = ({ navigation }) => {
           >
             <Back />
           </TouchableOpacity>
-          <Text style={styles.title}>Scan Plant</Text>
+          <Text style={styles.title}>
+            {scanMode === "qrcode" ? "Scan QR Code" : "Scan Plant"}
+          </Text>
         </View>
 
         <BlurView intensity={50} tint="dark" style={styles.overlayTop} />
@@ -244,14 +308,32 @@ const CameraScreen = ({ navigation }) => {
         <BlurView intensity={50} tint="dark" style={styles.overlayRight} />
 
         <View style={styles.captureContainer} pointerEvents="auto">
-          <TouchableOpacity
-            style={[styles.captureButton, loading && { opacity: 0.5 }]}
-            onPress={takePicture}
-            disabled={loading}
-          >
-            {loading && <ActivityIndicator size="large" color="#4CAF50" />}
-          </TouchableOpacity>
+          {scanMode === "photo" ? (
+            <TouchableOpacity
+              style={[styles.captureButton, loading && { opacity: 0.5 }]}
+              onPress={takePicture}
+              disabled={loading}
+            >
+              {loading && <ActivityIndicator size="large" color="#4CAF50" />}
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.qrScanIndicator}>
+              <Text style={styles.qrScanText}>
+                {qrCodeData ? "QR Code Detectado!" : "Aponte para um QR Code"}
+              </Text>
+            </View>
+          )}
         </View>
+
+        <TouchableOpacity
+          style={styles.modeSwitchButton}
+          onPress={toggleScanMode}
+          pointerEvents="auto"
+        >
+          <Text style={styles.modeSwitchText}>
+            {scanMode === "photo" ? "QR Code" : "Foto"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <Modal
@@ -284,6 +366,35 @@ const CameraScreen = ({ navigation }) => {
 
             <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
               <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={qrModalVisible}
+        animationType="none"
+        onRequestClose={closeQrModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View
+            style={[
+              styles.reportContainer,
+              { transform: [{ translateY: qrSlideAnim }] },
+            ]}
+          >
+            <Text style={styles.reportHeader}>QR Code Detectado!</Text>
+
+            <Text style={styles.reportTitle}>Informação do QR Code</Text>
+
+            <View style={styles.qrDataContainer}>
+              <Text style={styles.qrDataLabel}>Conteúdo:</Text>
+              <Text style={styles.qrDataText}>{qrCodeData}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.closeButton} onPress={closeQrModal}>
+              <Text style={styles.closeButtonText}>Fechar</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>
@@ -470,6 +581,50 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#333",
     marginBottom: 10,
+  },
+  modeSwitchButton: {
+    position: "absolute",
+    top: 120,
+    alignSelf: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    zIndex: 20,
+  },
+  modeSwitchText: {
+    color: "#333",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  qrScanIndicator: {
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  qrScanText: {
+    color: "#333",
+    fontWeight: "600",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  qrDataContainer: {
+    backgroundColor: "#F3F4F6",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  qrDataLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginBottom: 8,
+  },
+  qrDataText: {
+    fontSize: 15,
+    color: "#1F2937",
+    lineHeight: 22,
   },
 });
 

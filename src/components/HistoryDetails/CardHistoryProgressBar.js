@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { ProgressBar } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getOccurrenceHistory } from "../../services/Api";
+import { getOccurrenceHistory, getAnalysisHistory } from "../../services/Api";
 
 const { width } = Dimensions.get("window");
 
@@ -28,28 +28,84 @@ const CardHistoryProgressBar = ({ farmId }) => {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem("token");
-      const occurrences = await getOccurrenceHistory(farmId, token);
+
+      const [analyses, occurrences] = await Promise.all([
+        getAnalysisHistory(farmId, token),
+        getOccurrenceHistory(farmId, token),
+      ]);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const todayEnd = new Date(today);
+      todayEnd.setHours(23, 59, 59, 999);
+
+      let healthyCount = 0;
+      let infectedCountTotal = 0;
+      let totalCountSum = 0;
+
+      if (analyses && analyses.length > 0) {
+        analyses.forEach((analysis) => {
+          const analysisDate = new Date(
+            analysis.timestamp ||
+              analysis.createdAt ||
+              analysis._id.toString().substring(0, 8)
+          );
+
+          if (analysisDate >= today && analysisDate <= todayEnd) {
+            const prediction = analysis.prediction?.toLowerCase() || "";
+
+            if (
+              prediction.includes("saudável") ||
+              prediction.includes("saudavel") ||
+              prediction === "planta saudável"
+            ) {
+              healthyCount += 1;
+            } else if (
+              prediction.includes("doente") ||
+              prediction === "planta doente"
+            ) {
+              infectedCountTotal += 1;
+            }
+          }
+        });
+      }
 
       if (occurrences && occurrences.length > 0) {
-        // Calcula a média diária de plantas infectadas
-        const totalInfected = occurrences.reduce(
-          (sum, occ) => sum + (occ.infectedCounts || 0),
-          0
-        );
-        const totalPlants = occurrences.reduce(
-          (sum, occ) => sum + (occ.totalCounts || 0),
-          0
-        );
+        occurrences.forEach((occurrence) => {
+          const occDate = new Date(occurrence.date || occurrence.createdAt);
 
-        const avgInfected = Math.round(totalInfected / occurrences.length);
-        const avgTotal = Math.round(totalPlants / occurrences.length);
-
-        setInfectedCount(avgInfected);
-        setTotalCount(avgTotal);
-
-        const calculatedProgress = avgTotal > 0 ? avgInfected / avgTotal : 0;
-        setProgress(calculatedProgress);
+          if (occDate >= today && occDate <= todayEnd) {
+            infectedCountTotal += occurrence.infectedCounts || 0;
+            healthyCount += occurrence.healthyCounts || 0;
+            totalCountSum += occurrence.totalCounts || 0;
+          }
+        });
       }
+
+      const totalPlants = healthyCount + infectedCountTotal;
+
+      if (totalCountSum > 0 && totalPlants > totalCountSum) {
+        const ratio = totalCountSum / totalPlants;
+        healthyCount = Math.round(healthyCount * ratio);
+        infectedCountTotal = Math.round(infectedCountTotal * ratio);
+      }
+
+      const finalTotal = Math.max(totalPlants, totalCountSum);
+
+      setInfectedCount(infectedCountTotal);
+      setTotalCount(finalTotal);
+
+      const calculatedProgress =
+        finalTotal > 0 ? infectedCountTotal / finalTotal : 0;
+      setProgress(calculatedProgress);
+
+      console.log("Dados do dia atual:", {
+        healthyCount,
+        infectedCountTotal,
+        finalTotal,
+        progress: calculatedProgress,
+      });
     } catch (error) {
       console.error("Erro ao carregar dados de ocorrências:", error);
     } finally {

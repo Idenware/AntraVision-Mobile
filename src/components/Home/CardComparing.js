@@ -21,26 +21,29 @@ const CardComparing = () => {
     loadComparison();
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadComparison();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   const loadComparison = async () => {
     try {
       const token = await AsyncStorage.getItem("token");
-      const userJson = await AsyncStorage.getItem("user");
 
-      if (token && userJson) {
-        const user = JSON.parse(userJson);
-        const selectedFarmId = user.selectedFarm;
+      if (token) {
+        const farms = await getFarms(token);
 
-        if (!selectedFarmId) {
+        if (farms.length === 0) {
           setComparison({
-            message: "Selecione uma fazenda para ver comparações",
+            message: "Nenhuma fazenda cadastrada",
           });
           setLoading(false);
           return;
         }
 
-        const farms = await getFarms(token);
-
-        if (farms.length < 2) {
+        if (farms.length === 1) {
           setComparison({
             message: "Adicione mais fazendas para comparar ocorrências",
           });
@@ -77,43 +80,22 @@ const CardComparing = () => {
           (a, b) => b.totalInfected - a.totalInfected
         );
 
-        const selectedFarm = sorted.find((f) => f.id === selectedFarmId);
-        const otherFarms = sorted.filter((f) => f.id !== selectedFarmId);
-
-        if (!selectedFarm || otherFarms.length === 0) {
-          setComparison({
-            message: "Dados insuficientes para comparação",
-          });
-          setLoading(false);
-          return;
-        }
-
         if (sorted[0].totalInfected === 0) {
           setComparison({
             message: "Nenhuma ocorrência registrada nas fazendas",
           });
         } else {
-          const comparisonFarm = otherFarms.length > 0 ? otherFarms[0] : null;
+          const topFarm = sorted[0];
+          const secondFarm = sorted[1];
 
-          if (!comparisonFarm) {
+          if (topFarm.totalInfected === secondFarm.totalInfected) {
             setComparison({
-              message: `A fazenda "${selectedFarm.name}" possui ${selectedFarm.totalInfected} plantas infectadas`,
-            });
-          } else if (
-            selectedFarm.totalInfected > comparisonFarm.totalInfected
-          ) {
-            setComparison({
-              message: `O índice de ocorrência da propriedade "${selectedFarm.name}" é maior que "${comparisonFarm.name}"`,
-            });
-          } else if (
-            selectedFarm.totalInfected < comparisonFarm.totalInfected
-          ) {
-            setComparison({
-              message: `O índice de ocorrência da propriedade "${comparisonFarm.name}" é maior que "${selectedFarm.name}"`,
+              message: `As propriedades ${topFarm.name} e ${secondFarm.name} têm índices similares de ocorrência`,
             });
           } else {
+            const difference = topFarm.totalInfected - secondFarm.totalInfected;
             setComparison({
-              message: `As propriedades "${selectedFarm.name}" e "${comparisonFarm.name}" têm índices similares`,
+              message: `A propriedade ${topFarm.name} possui ${difference} plantas infectadas a mais que ${secondFarm.name}`,
             });
           }
         }

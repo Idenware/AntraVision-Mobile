@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getOccurrenceHistory } from "../../services/Api";
+import { getOccurrenceHistory, getAnalysisHistory } from "../../services/Api";
 import Anthracnose from "../../../assets/icons/thing/fungus.svg";
 import Heart from "../../../assets/icons/thing/heart.svg";
 import PalmHeart from "../../../assets/icons/thing/palm-heart.svg";
@@ -23,26 +23,80 @@ const CardOverviewAnalysis = ({ farmId }) => {
     try {
       setLoading(true);
       const token = await AsyncStorage.getItem("token");
-      const occurrences = await getOccurrenceHistory(farmId, token);
+
+      const [analyses, occurrences] = await Promise.all([
+        getAnalysisHistory(farmId, token),
+        getOccurrenceHistory(farmId, token),
+      ]);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const todayEnd = new Date(today);
+      todayEnd.setHours(23, 59, 59, 999);
+
+      let healthyTotal = 0;
+      let infectedTotal = 0;
+      let totalSum = 0;
+
+      if (analyses && analyses.length > 0) {
+        analyses.forEach((analysis) => {
+          const analysisDate = new Date(
+            analysis.timestamp ||
+              analysis.createdAt ||
+              analysis._id.toString().substring(0, 8)
+          );
+
+          if (analysisDate >= today && analysisDate <= todayEnd) {
+            const prediction = analysis.prediction?.toLowerCase() || "";
+
+            if (
+              prediction.includes("saudável") ||
+              prediction.includes("saudavel") ||
+              prediction === "planta saudável"
+            ) {
+              healthyTotal += 1;
+            } else if (
+              prediction.includes("doente") ||
+              prediction === "planta doente"
+            ) {
+              infectedTotal += 1;
+            }
+          }
+        });
+      }
 
       if (occurrences && occurrences.length > 0) {
-        const totalInfected = occurrences.reduce(
-          (sum, occ) => sum + (occ.infectedCounts || 0),
-          0
-        );
-        const totalHealthy = occurrences.reduce(
-          (sum, occ) => sum + (occ.healthyCounts || 0),
-          0
-        );
-        const totalPlants = occurrences.reduce(
-          (sum, occ) => sum + (occ.totalCounts || 0),
-          0
-        );
+        occurrences.forEach((occurrence) => {
+          const occDate = new Date(occurrence.date || occurrence.createdAt);
 
-        setAnthracnoseCount(totalInfected);
-        setHealthyCount(totalHealthy);
-        setTotalCount(totalPlants);
+          if (occDate >= today && occDate <= todayEnd) {
+            infectedTotal += occurrence.infectedCounts || 0;
+            healthyTotal += occurrence.healthyCounts || 0;
+            totalSum += occurrence.totalCounts || 0;
+          }
+        });
       }
+
+      const calculatedTotal = healthyTotal + infectedTotal;
+
+      if (totalSum > 0 && calculatedTotal > totalSum) {
+        const ratio = totalSum / calculatedTotal;
+        healthyTotal = Math.round(healthyTotal * ratio);
+        infectedTotal = Math.round(infectedTotal * ratio);
+      }
+
+      const finalTotal = Math.max(calculatedTotal, totalSum);
+
+      setAnthracnoseCount(infectedTotal);
+      setHealthyCount(healthyTotal);
+      setTotalCount(finalTotal);
+
+      console.log("CardOverviewAnalysis - Dados do dia:", {
+        infectedTotal,
+        healthyTotal,
+        finalTotal,
+      });
     } catch (error) {
       console.error("Erro ao carregar dados de ocorrências:", error);
     } finally {

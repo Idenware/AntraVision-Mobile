@@ -6,11 +6,12 @@ import {
   Dimensions,
   StyleSheet,
   ActivityIndicator,
+  DeviceEventEmitter,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LineChart } from "react-native-gifted-charts";
 import { LinearGradient } from "expo-linear-gradient";
-import { getStatsByDate } from "../../services/Api";
+import { getAnalysisHistory, getOccurrenceHistory } from "../../services/Api";
 
 const TIME_RANGES = ["Últimas Horas", "Últimas Semanas", "Últimos Meses"];
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -97,11 +98,10 @@ const generateLabel = (range, index, now) => {
 
 const ChartTimePeriod = () => {
   const [selectedRange, setSelectedRange] = useState("Últimas Horas");
-  const [occurrencesData, setOccurrencesData] = useState([]);
+  const [chartDataPoints, setChartDataPoints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [farmId, setFarmId] = useState(null);
 
-  // Carrega dados do usuário (farmId)
   useEffect(() => {
     const loadUserData = async () => {
       try {
@@ -118,44 +118,89 @@ const ChartTimePeriod = () => {
   }, []);
 
   useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      "farmSelected",
+      (selectedFarmId) => {
+        setFarmId(selectedFarmId);
+      }
+    );
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     if (!farmId) {
       setLoading(false);
       return;
     }
 
-    const fetchOccurrences = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
         const token = await AsyncStorage.getItem("token");
-        const data = await getStatsByDate(farmId, token);
-        setOccurrencesData(data || []);
+
+        const [analysisData, occurrenceData] = await Promise.all([
+          getAnalysisHistory(farmId, token),
+          getOccurrenceHistory(farmId, token),
+        ]);
+
+        const diseaseAnalyses = (analysisData || []).filter(
+          (item) => item.prediction === "Planta doente"
+        );
+
+        const processedData = [];
+
+        diseaseAnalyses.forEach((analysis) => {
+          const timestamp = analysis.timestamp
+            ? new Date(analysis.timestamp)
+            : analysis.createdAt
+            ? new Date(analysis.createdAt)
+            : new Date(
+                parseInt(analysis._id.toString().substring(0, 8), 16) * 1000
+              );
+
+          processedData.push({
+            timestamp,
+            value: 1,
+            type: "disease",
+          });
+        });
+
+        (occurrenceData || []).forEach((occurrence) => {
+          processedData.push({
+            timestamp: new Date(occurrence.date),
+            value: occurrence.infectedCounts || 0,
+            type: "infection",
+          });
+        });
+
+        setChartDataPoints(processedData);
       } catch (error) {
-        console.error("Erro ao buscar dados de ocorrências:", error);
-        setOccurrencesData([]);
+        console.error("Erro ao buscar dados:", error);
+        setChartDataPoints([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchOccurrences();
+    fetchData();
   }, [farmId]);
 
   const values = useMemo(() => {
-    if (!occurrencesData.length) return Array(PERIODS_COUNT).fill(0);
+    if (!chartDataPoints.length) return Array(PERIODS_COUNT).fill(0);
 
     const now = new Date();
     return Array.from({ length: PERIODS_COUNT }, (_, i) => {
       const index = PERIODS_COUNT - 1 - i;
       const { start, end } = getTimeRange(selectedRange, index, now);
 
-      return occurrencesData
+      return chartDataPoints
         .filter((item) => {
-          const itemDate = new Date(item._id);
-          return itemDate >= start && itemDate <= end;
+          return item.timestamp >= start && item.timestamp <= end;
         })
-        .reduce((sum, item) => sum + (item.count || 0), 0);
+        .reduce((sum, item) => sum + item.value, 0);
     });
-  }, [occurrencesData, selectedRange]);
+  }, [chartDataPoints, selectedRange]);
 
   const labels = useMemo(() => {
     const now = new Date();
@@ -170,7 +215,7 @@ const ChartTimePeriod = () => {
       values.map((value, i) => ({
         value,
         label: labels[i],
-        hideDataPoint: true,
+        dataPointText: value.toString(),
       })),
     [values, labels]
   );
@@ -245,7 +290,11 @@ const ChartTimePeriod = () => {
         xAxisLabelTextStyle={styles.xAxisLabel}
         showDataPoint
         dataPointsColor="#00c389"
-        dataPointsRadius={4}
+        dataPointsRadius={5}
+        textShiftY={-10}
+        textShiftX={0}
+        textColor="#484C52"
+        textFontSize={12}
         hideRules
         isAnimated
         animationDuration={500}

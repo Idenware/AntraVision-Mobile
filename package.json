@@ -45,7 +45,8 @@
     "react-native-vision-camera": "^4.6.4",
     "react-native-web": "^0.20.0",
     "styled-components": "^6.1.17",
-    "victory-native": "^41.17.1"
+    "victory-native": "^41.17.1",
+    "expo-image-picker": "~16.1.4"
   },
   "rnpm": {
     "assets": [

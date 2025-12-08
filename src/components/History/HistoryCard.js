@@ -13,9 +13,10 @@ import { getSectorStatsByFarm } from "../../services/Api";
 
 const { width } = Dimensions.get("window");
 
-const getBarColor = (value) => {
-  if (value >= 35) return "#FF6B6B";
-  if (value >= 20) return "#FFD868";
+const getBarColor = (value, total) => {
+  const halfTotal = total / 2;
+  if (value > halfTotal + 1) return "#FF6B6B";
+  if (value >= halfTotal - 1 && value <= halfTotal + 1) return "#FFD868";
   return "#BCEC9F";
 };
 
@@ -33,21 +34,43 @@ const HistoryCard = ({ farm, onPress }) => {
       const token = await AsyncStorage.getItem("token");
       const stats = await getSectorStatsByFarm(farm._id, token);
 
+      // Filtrar dados apenas da data atual
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(today);
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const todayStats = stats.filter((stat) => {
+        const statDate = new Date(
+          stat.date || stat.createdAt || stat.timestamp
+        );
+        return statDate >= today && statDate <= todayEnd;
+      });
+
       const sectorMap = {};
-      stats.forEach((stat) => {
+      todayStats.forEach((stat) => {
+        const total =
+          (stat.healthy || 0) +
+          (stat.attention || 0) +
+          (stat.severe || 0) +
+          (stat.critical || 0);
+
         const intensity =
           (stat.attention || 0) + (stat.severe || 0) + (stat.critical || 0);
+
         if (!sectorMap[stat.sectorName]) {
-          sectorMap[stat.sectorName] = intensity;
+          sectorMap[stat.sectorName] = { value: intensity, total };
         } else {
-          sectorMap[stat.sectorName] += intensity;
+          sectorMap[stat.sectorName].value += intensity;
+          sectorMap[stat.sectorName].total += total;
         }
       });
 
       setSectorData(
-        Object.entries(sectorMap).map(([name, value]) => ({
+        Object.entries(sectorMap).map(([name, data]) => ({
           sectorName: name,
-          value,
+          value: data.value,
+          total: data.total,
         }))
       );
     } catch (error) {
@@ -61,7 +84,7 @@ const HistoryCard = ({ farm, onPress }) => {
   const data = sectorData.map((sector, index) => ({
     value: sector.value,
     label: sector.sectorName,
-    frontColor: getBarColor(sector.value),
+    frontColor: getBarColor(sector.value, sector.total),
     topLabelComponent: () => (
       <Text style={styles.labelText}>{sector.value}</Text>
     ),
@@ -78,7 +101,7 @@ const HistoryCard = ({ farm, onPress }) => {
 
   if (!sectorData.length) {
     return (
-      <View style={styles.container}>
+      <TouchableOpacity onPress={() => onPress(farm)} style={styles.container}>
         <View style={styles.textContent}>
           <View style={styles.historyTextContent}>
             <Text style={styles.title}>Intensidade da doença por Setor</Text>
@@ -87,9 +110,9 @@ const HistoryCard = ({ farm, onPress }) => {
         </View>
         <View style={{ height: 1, backgroundColor: "#ccc" }} />
         <Text style={styles.noDataText}>
-          Nenhum dado disponível para esta fazenda
+          Nenhum dado disponível para a data atual.
         </Text>
-      </View>
+      </TouchableOpacity>
     );
   }
 

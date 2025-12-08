@@ -50,12 +50,11 @@ const HistoryDetailsScreen = ({ navigation, route }) => {
       </View>
       <View style={styles.overviewStatisticsContent}>
         <View style={styles.overviewStatisticsChart}>
-          <CardChartHistoryDetails />
+          <CardChartHistoryDetails farmId={farm?._id} />
           <CardOverviewAnalysis farmId={farm?._id} />
         </View>
         <View style={styles.overviewStatistics}>
           <CardHistoryProgressBar farmId={farm?._id} />
-          <CardHistoryChartSeed farmId={farm?._id} />
         </View>
       </View>
     </ScrollView>

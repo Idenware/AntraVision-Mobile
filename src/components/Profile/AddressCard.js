@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFarmById, selectUserFarm } from "../../services/Api";
@@ -31,6 +32,8 @@ const AddressCard = ({ farm, isSelected, onSelect }) => {
         if (onSelect) {
           onSelect(farm._id);
         }
+
+        DeviceEventEmitter.emit("farmSelected", farm._id);
 
         Alert.alert("Sucesso", `Fazenda "${farm.name}" selecionada!`);
       }

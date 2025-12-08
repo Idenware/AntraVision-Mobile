@@ -1,13 +1,65 @@
-import React from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Dimensions,
+  DeviceEventEmitter,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLeituraWebSocket } from "../../hooks/UseLeituraWebSocket";
 import Drop from "../../../assets/icons/thing/drop.svg";
 
 const { width } = Dimensions.get("window");
 
 const CarouselCardOverview = () => {
-  // const leitura = useLeituraWebSocket();
+  const [humidity, setHumidity] = useState(45);
+  const [farmId, setFarmId] = useState(null);
+
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const userJson = await AsyncStorage.getItem("user");
+        if (userJson) {
+          const user = JSON.parse(userJson);
+          setFarmId(user.selectedFarm);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar dados do usuário:", error);
+      }
+    };
+    loadUserData();
+  }, []);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      "farmSelected",
+      (selectedFarmId) => {
+        setFarmId(selectedFarmId);
+      }
+    );
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (farmId === "6935ba1648819e53fcabe6db") {
+      setHumidity(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setHumidity((prev) => {
+        const change = Math.random() > 0.5 ? 1 : -1;
+        const newValue = prev + change;
+        return Math.max(20, Math.min(80, newValue));
+      });
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [farmId]);
+
   return (
     <LinearGradient
       start={{ x: 1, y: 0 }}
@@ -24,13 +76,12 @@ const CarouselCardOverview = () => {
         </View>
 
         <View style={styles.percentContent}>
-          <Text style={styles.percent}>00%</Text>
+          <Text style={styles.percent}>{humidity}%</Text>
           <Drop style={styles.drop} />
         </View>
       </View>
 
-      <View style={styles.pagination}>
-      </View>
+      <View style={styles.pagination}></View>
     </LinearGradient>
   );
 };

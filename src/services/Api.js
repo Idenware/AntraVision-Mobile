@@ -287,7 +287,7 @@ export const upsertSectorStats = async (statsData, token) => {
 
 export const getSectorStatsByFarm = async (farmId, token) => {
   try {
-    const response = await api.get(`/sector-stats/farm/${farmId}`, {
+    const response = await api.get(`/sector-stats/sectors/${farmId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
@@ -406,6 +406,36 @@ export const getSummary = async (farmId, token) => {
   } catch (error) {
     console.error(
       "Erro ao buscar resumo:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
+export const analyzeImage = async (analysisData, token) => {
+  try {
+    const response = await api.post("/ia/analisar", analysisData, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Erro ao analisar imagem:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
+export const getAnalysisHistory = async (farmId, token) => {
+  try {
+    const response = await api.get(`/ia/historico/${farmId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Erro ao buscar histórico de análises:",
       error.response?.data || error.message
     );
     throw error;
