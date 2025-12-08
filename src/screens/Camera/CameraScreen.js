@@ -9,8 +9,10 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  DeviceEventEmitter,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImageManipulator from "expo-image-manipulator";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   analyzeImage,
@@ -23,6 +25,8 @@ import { BlurView } from "expo-blur";
 const { height } = Dimensions.get("window");
 
 const QR_CODE_DEBOUNCE = 3000;
+const MAX_IMAGE_SIZE_MB = 10;
+const TARGET_IMAGE_SIZE_KB = 200;
 
 const htmlToJson = (htmlString) => {
   try {
@@ -39,9 +43,74 @@ const htmlToJson = (htmlString) => {
 
 const checkBase64Size = (base64String) => {
   const sizeInBytes = (base64String.length * 3) / 4;
-  const sizeInMB = sizeInBytes / (1024 * 1024);
-  console.log(`Tamanho da imagem: ${sizeInMB.toFixed(2)} MB`);
-  return sizeInMB;
+  const sizeInKB = sizeInBytes / 1024;
+  const sizeInMB = sizeInKB / 1024;
+  console.log(
+    `Tamanho da imagem: ${sizeInKB.toFixed(2)} KB (${sizeInMB.toFixed(2)} MB)`
+  );
+  return { kb: sizeInKB, mb: sizeInMB };
+};
+
+const compressAndResizeImage = async (
+  base64Image,
+  targetSizeKB = TARGET_IMAGE_SIZE_KB
+) => {
+  try {
+    console.log("Iniciando compressão da imagem...");
+
+    const uri = `data:image/jpeg;base64,${base64Image}`;
+
+    const firstPass = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 1024 } }],
+      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    );
+
+    let currentSize = checkBase64Size(firstPass.base64);
+    console.log(
+      `Após primeiro redimensionamento: ${currentSize.kb.toFixed(2)} KB`
+    );
+
+    if (currentSize.kb > targetSizeKB * 1.5) {
+      console.log("Fazendo segunda compressão...");
+      const secondPass = await ImageManipulator.manipulateAsync(
+        `data:image/jpeg;base64,${firstPass.base64}`,
+        [{ resize: { width: 800 } }],
+        {
+          compress: 0.6,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        }
+      );
+
+      currentSize = checkBase64Size(secondPass.base64);
+      console.log(`Após segunda compressão: ${currentSize.kb.toFixed(2)} KB`);
+
+      if (currentSize.kb > targetSizeKB) {
+        console.log("Fazendo compressão final...");
+        const finalPass = await ImageManipulator.manipulateAsync(
+          `data:image/jpeg;base64,${secondPass.base64}`,
+          [{ resize: { width: 640 } }],
+          {
+            compress: 0.5,
+            format: ImageManipulator.SaveFormat.JPEG,
+            base64: true,
+          }
+        );
+
+        currentSize = checkBase64Size(finalPass.base64);
+        console.log(`Tamanho final: ${currentSize.kb.toFixed(2)} KB`);
+        return finalPass.base64;
+      }
+
+      return secondPass.base64;
+    }
+
+    return firstPass.base64;
+  } catch (error) {
+    console.error("Erro ao comprimir imagem:", error);
+    return base64Image;
+  }
 };
 
 const CameraScreen = ({ navigation }) => {
@@ -140,29 +209,57 @@ const CameraScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
+      console.log("Capturando foto...");
+
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.2,
+        quality: 0.1,
+        skipProcessing: true,
       });
 
+      console.log("Foto capturada, verificando tamanho...");
       const base64Image = photo.base64;
-      const sizeMB = checkBase64Size(base64Image);
+      const size = checkBase64Size(base64Image);
 
-      if (sizeMB > 1) {
-        Alert.alert(
-          "Imagem Muito Grande",
-          "A imagem é muito grande. Por favor, tente novamente."
+      if (size.mb > MAX_IMAGE_SIZE_MB) {
+        console.log(
+          `Imagem muito grande (${size.mb.toFixed(2)} MB), comprimindo...`
         );
-        setLoading(false);
-        return;
+        Alert.alert(
+          "Otimizando Imagem",
+          "A imagem está sendo comprimida para melhor envio..."
+        );
       }
 
-      await sendPhotoToAPI(base64Image);
+      const compressedImage = await compressAndResizeImage(base64Image);
+      const compressedSize = checkBase64Size(compressedImage);
+
+      console.log(
+        `Imagem pronta para envio: ${compressedSize.kb.toFixed(2)} KB`
+      );
+
+      await sendPhotoToAPI(compressedImage);
     } catch (error) {
-      console.error("Error taking photo:", error);
+      console.error("Erro ao capturar foto:", error);
       Alert.alert("Erro", "Falha ao capturar imagem.");
       setLoading(false);
     }
+  };
+
+  const emitUpdateEvents = (farmId, prediction) => {
+    DeviceEventEmitter.emit("analysisCompleted", {
+      farmId,
+      prediction,
+      timestamp: new Date().toISOString(),
+    });
+
+    DeviceEventEmitter.emit("sectorDataUpdated", {
+      farmId,
+      sectorName: "05",
+      prediction,
+    });
+
+    DeviceEventEmitter.emit("farmDataUpdated", farmId);
   };
 
   const createOccurrenceFromAnalysis = async (prediction, farmId, token) => {
@@ -209,7 +306,8 @@ const CameraScreen = ({ navigation }) => {
       };
 
       await upsertSectorStats(sectorStatsData, token);
-      console.log("Estatísticas do setor atualizadas:", sectorStatsData);
+      emitUpdateEvents(farmId, prediction);
+      return { healthyCounts, attentionCounts };
     } catch (error) {
       console.error("Erro ao criar ocorrência/estatísticas:", error);
     }
@@ -241,10 +339,11 @@ const CameraScreen = ({ navigation }) => {
       const analysisData = {
         userId: user.id,
         farmId: farmId,
-        location: "Camera",
+        location: "Fazenda 1",
         image: base64Image,
       };
 
+      console.log("Enviando imagem para análise...");
       const response = await analyzeImage(analysisData, token);
 
       if (response.iaResult) {
@@ -259,10 +358,18 @@ const CameraScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error("Error sending photo:", error);
-      Alert.alert(
-        "Erro de Conexão",
-        "Não foi possível conectar à API. Verifique sua conexão e certifique-se de que o backend está rodando."
-      );
+
+      if (error.response?.status === 413) {
+        Alert.alert(
+          "Imagem Muito Grande",
+          "A imagem ainda está muito grande após compressão. Por favor, tente novamente em uma área com melhor iluminação."
+        );
+      } else {
+        Alert.alert(
+          "Erro de Conexão",
+          "Não foi possível conectar à API. Verifique sua conexão e certifique-se de que o backend está rodando."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -350,22 +457,22 @@ const CameraScreen = ({ navigation }) => {
             ]}
           >
             <Text style={styles.reportHeader}>
-              Hey, we just analyzed your plant!
+              Ei, acabamos de analisar sua planta!
             </Text>
 
-            <Text style={styles.reportTitle}>Plant Report</Text>
+            <Text style={styles.reportTitle}>Relatório da planta</Text>
 
-            <Text style={styles.sectionTitle}>Description</Text>
+            <Text style={styles.sectionTitle}>Descrição</Text>
 
             <View style={styles.statusRow}>
-              <Text style={styles.statusLabel}>Plant Status: </Text>
+              <Text style={styles.statusLabel}>Status da Planta: </Text>
               <Text style={styles.statusValue}>{resultado}</Text>
             </View>
 
             <Text style={styles.descriptionText}></Text>
 
             <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
-              <Text style={styles.closeButtonText}>Close</Text>
+              <Text style={styles.closeButtonText}>Fechar</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>
